@@ -41,6 +41,23 @@ func initMinioClient() *minio.Client {
 func NewClient() *minio.Client {
 	return initMinioClient()
 }
+func NewMount() {
+	client := NewClient()
+	fs := &MS{Client: client, Bucket: global.GlobalSetting.BucketName, MountPoint: global.GlobalSetting.MountPoint}
+	go fs.ScanEmptyDirAuto(global.GlobalSetting.BucketName, context.Background())
+	go autoRM()
+	host := fuse.NewFileSystemHost(fs)
+	str := []string{
+		"-o", "allow_other",
+		"-o", "name=minions",
+		"-o", "uid=-1", // 设置匿名用户
+		"-o", "gid=-1", // 设置匿名组
+		"-o", "default_permissions", // 启用权限检查
+		"-o", "attr_timeout=3", // 缓存时间3s
+		"-o", "rw",
+	}
+	host.Mount(global.GlobalSetting.MountPoint, str)
+}
 func (fs *MS) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
 	if path == "/" {
 		stat.Mode = fuse.S_IFDIR | 0755
@@ -492,6 +509,24 @@ func (fs *MS) ScanEmptyDirAuto(bucket string, ctx context.Context) {
 				if object.Size == 0 {
 					global.EmptyDirs = append(global.EmptyDirs, object.Key)
 				}
+			}
+		}
+	}
+}
+func autoRM() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if len(global.EmptyDirs) > 0 {
+				for _, dir := range global.EmptyDirs {
+					err := meta.GlobalTikv.RmdirAuto(dir)
+					if err != nil {
+						global.GlobalLogger.Printf("error to remove empty dir(%s),err:%v", dir, err)
+					}
+				}
+				global.EmptyDirs = nil
 			}
 		}
 	}
