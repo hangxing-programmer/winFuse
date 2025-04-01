@@ -256,20 +256,7 @@ func (fs *MS) Read(path string, buff []byte, ofst int64, fh uint64) (n int) {
 		return -fuse.EIO
 	}
 	defer obj.Close()
-
-	if _, err = obj.Seek(ofst, io.SeekStart); err != nil {
-		global.GlobalLogger.Printf("Seek failed: %v", err)
-		return -fuse.EIO
-	}
-
-	if ofst == 0 {
-		return -fuse.EIO
-	}
-	n, err = obj.ReadAt(buff, ofst)
-	if err != nil && err != io.EOF {
-		global.GlobalLogger.Printf("Read failed: %v", err)
-		return -fuse.EIO
-	}
+	n, _ = obj.ReadAt(buff, ofst)
 	return n
 }
 func (fs *MS) Release(path string, fh uint64) int {
@@ -297,10 +284,15 @@ func (fs *MS) Release(path string, fh uint64) int {
 func (fs *MS) Write(path string, buff []byte, ofst int64, fh uint64) (n int) {
 	fs.Lock.Lock()
 	defer fs.Lock.Unlock()
+	createErr := os.MkdirAll(global.GlobalSetting.Cache+"\\"+filepath.Dir(strings.TrimPrefix(path, "/")), 0644)
+	if createErr != nil {
+		global.GlobalLogger.Printf("Error creating cache dir: %v\n", createErr)
+		return -fuse.EIO
+	}
 	fs.CacheFile, _ = os.OpenFile(global.GlobalSetting.Cache+"\\"+strings.TrimPrefix(path, "/"), os.O_CREATE|os.O_RDWR, 0644)
 	ctx := context.Background()
 	object, err := fs.Client.GetObject(ctx, fs.Bucket, path, minio.GetObjectOptions{})
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "not exist") {
 		global.GlobalLogger.Println("Error getting object:", err)
 		return -fuse.EIO
 	}
@@ -507,13 +499,13 @@ func (fs *MS) ScanEmptyDirAuto(bucket string, ctx context.Context) {
 			})
 			for object := range objects {
 				if object.Err != nil {
-					global.GlobalLogger.Printf("ScanEmptyDirAuto err:%v", object.Err)
+					global.GlobalLogger.Printf("ScanEmptyDirAuto err:%v\n", object.Err)
 					continue
 				}
 				if strings.HasSuffix(object.Key, "/") {
 					err := meta.GlobalTikv.RmdirAuto(object.Key)
 					if err != nil && !strings.Contains(err.Error(), "not exist") {
-						global.GlobalLogger.Printf("error to remove empty dir(%s),err:%v", object.Key, err)
+						global.GlobalLogger.Printf("error to remove empty dir(%s),err:%v\n", object.Key, err)
 					}
 				}
 			}

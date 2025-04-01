@@ -81,7 +81,6 @@ func (ms *MetaStore) RmdirAuto(path string) error {
 		}
 		objKey := GetObjKey(global.GlobalSetting.TenantID, string(num), dirName)
 		err = txn.Delete(objKey)
-		fmt.Printf("object = %s has been deleted", string(objKey))
 		return err
 	})
 	return err
