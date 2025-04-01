@@ -45,7 +45,7 @@ func NewMount() {
 	client := NewClient()
 	fs := &MS{Client: client, Bucket: global.GlobalSetting.BucketName, MountPoint: global.GlobalSetting.MountPoint}
 	go fs.ScanEmptyDirAuto(global.GlobalSetting.BucketName, context.Background())
-	go autoRM()
+	//go autoRM()
 	host := fuse.NewFileSystemHost(fs)
 	str := []string{
 		"-o", "allow_other",
@@ -262,6 +262,9 @@ func (fs *MS) Read(path string, buff []byte, ofst int64, fh uint64) (n int) {
 		return -fuse.EIO
 	}
 
+	if ofst == 0 {
+		return -fuse.EIO
+	}
 	n, err = obj.ReadAt(buff, ofst)
 	if err != nil && err != io.EOF {
 		global.GlobalLogger.Printf("Read failed: %v", err)
@@ -494,7 +497,7 @@ func (fs *MS) insertAtPosition(srcPath string, offset int64, insertData []byte) 
 	return nil
 }
 func (fs *MS) ScanEmptyDirAuto(bucket string, ctx context.Context) {
-	ticker := time.NewTicker(20 * time.Second)
+	ticker := time.NewTicker(6 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -504,29 +507,15 @@ func (fs *MS) ScanEmptyDirAuto(bucket string, ctx context.Context) {
 			})
 			for object := range objects {
 				if object.Err != nil {
-					log.Fatalln(object.Err)
+					global.GlobalLogger.Printf("ScanEmptyDirAuto err:%v", object.Err)
+					continue
 				}
-				if object.Size == 0 {
-					global.EmptyDirs = append(global.EmptyDirs, object.Key)
-				}
-			}
-		}
-	}
-}
-func autoRM() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if len(global.EmptyDirs) > 0 {
-				for _, dir := range global.EmptyDirs {
-					err := meta.GlobalTikv.RmdirAuto(dir)
-					if err != nil {
-						global.GlobalLogger.Printf("error to remove empty dir(%s),err:%v", dir, err)
+				if strings.HasSuffix(object.Key, "/") {
+					err := meta.GlobalTikv.RmdirAuto(object.Key)
+					if err != nil && !strings.Contains(err.Error(), "not exist") {
+						global.GlobalLogger.Printf("error to remove empty dir(%s),err:%v", object.Key, err)
 					}
 				}
-				global.EmptyDirs = nil
 			}
 		}
 	}

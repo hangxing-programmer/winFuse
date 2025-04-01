@@ -2,10 +2,10 @@
   "debug": false,
   "mountpoint" : "D:\\vol2",
   "cache" : "D:\\vol1",
-  "bucketname" : "test1",
-  "endpoint" : "10.0.11.101:9001",
+  "bucketname" : "test",
+  "endpoint" : "10.0.11.33:9001",
   "accessKeyID" : "admin",
   "secretAccessKey" : "adminadmin",
   "useSSL" : false,
-  "tikvAddr" : "10.0.11.101:2379,10.0.11.102:2379,10.0.103:2379"
+  "tikvAddr" : "10.0.11.33:2379,10.0.11.34:2379,10.0.35:2379"
 }
